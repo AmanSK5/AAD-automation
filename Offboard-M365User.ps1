@@ -5,7 +5,7 @@ Offboard one or more users by UPN/email:
 - Remove all product licenses
 - Remove from DGs, M365 Groups (member/owner), Security Groups
 - Remove permissions on all shared mailboxes
-- Convert their own mailbox to Shared for Cloud backup pricing to go down
+- Convert their own mailbox to Shared
 - (Optional) Send Slack notification via Incoming Webhook with the extra paramter when run
 
 .EXAMPLES
