@@ -1,8 +1,9 @@
 # Azure AD / Microsoft 365 User Automation
 
-PowerShell automation for onboarding and offboarding Microsoft 365 users using Microsoft Graph and Exchange Online. Yes, even with fancy tools like Runbook/Puppet/etc, PowerShell still is a good fit for common tasks in a Microsoft stack. 
+PowerShell automation for onboarding and offboarding Microsoft 365 users using Microsoft Graph and Exchange Online.
+Even with platforms like Runbooks, Puppet, or other automation tools, PowerShell remains a practical and effective option for common identity lifecycle tasks in Microsoft environments.
 
-This repository contains scripts designed for IT teams to standardise and automate common identity lifecycle tasks.
+This repository contains scripts designed for IT teams to standardise and automate user onboarding and offboarding processes.
 
 ---
 
@@ -27,7 +28,7 @@ This repository contains scripts designed for IT teams to standardise and automa
 ### Offboarding (`Offboard-M365User.ps1`)
 
 * Disables user account
-* Revokes sign-in sessions
+* Optionally revokes sign-in sessions
 * Removes licenses
 * Removes group memberships
 * Cleans shared mailbox permissions
@@ -57,6 +58,16 @@ Delegated scopes required:
 ## Setup
 
 1. Clone the repository
+2. Install required PowerShell modules:
+
+```powershell
+Install-Module Microsoft.Graph -Scope CurrentUser
+Install-Module ExchangeOnlineManagement -Scope CurrentUser
+```
+
+3. Run the scripts from a PowerShell session.
+
+---
 
 ## Usage
 
@@ -96,7 +107,7 @@ With Slack notification:
 
 ```powershell
 ./Offboard-M365User.ps1 `
-  -User mank@amansk.co `
+  -User amank@amansk.co `
   -RevokeSignIn `
   -SlackWebhookUrl "https://hooks.slack.com/services/XXX/YYY/ZZZ"
 ```
@@ -105,7 +116,7 @@ With Slack notification:
 
 ## Configuration
 
-Example config:
+Example configuration structure:
 
 ```json
 {
@@ -120,12 +131,16 @@ Example config:
 }
 ```
 
+Do not commit real configuration files or secrets to the repository.
+
 ---
 
 ## Security Notes
 
-* Do not commit real configuration files or secrets.
+* Do not commit real configuration files, secrets, or webhook URLs.
 * Review Graph permissions before use in production.
+* The onboarding script generates a temporary password and displays it once.
+  Share it with the user via a secure channel and avoid running the script in environments where console output is logged or recorded.
 
 ---
 
