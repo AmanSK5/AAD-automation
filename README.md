@@ -2,7 +2,7 @@
 
 PowerShell toolkit for common **Microsoft 365 / Entra ID** administrative tasks.
 
-Designed for IT admins and junior sysadmins who need a simple, guided interface for identity lifecycle and tenant housekeeping.
+Designed for IT admins/sysadmins who need a simple, guided interface for identity lifecycle and tenant housekeeping.
 
 ---
 
@@ -132,7 +132,7 @@ $env:SLACK_WEBHOOK_URL="https://hooks.slack.com/services/XXX/YYY/ZZZ"
 From the repo root:
 
 ```powershell
-pwsh ./Invoke-M365ToolKit.ps1
+pwsh ./Invoke-M365Toolkit.ps1
 ```
 
 Menu:
@@ -150,8 +150,8 @@ Q) Quit
 ## Repository Structure
 
 ```
-Invoke-M365ToolKit.ps1
-Scripts/
+Invoke-M365Toolkit.ps1
+scripts/
   New-M365User.ps1
   Offboard-M365User.ps1
   Cleanup-SharePoint.ps1
@@ -218,6 +218,25 @@ Execute:
 ```powershell
 ./scripts/Get-EntraUsersByDomain.ps1 -Domains tangent.co -UserType Member
 ```
+
+---
+
+## Troubleshooting
+
+**Wrong tenant after `az login`**
+
+```
+az login --tenant <tenant-id>
+```
+
+**Graph permission errors**
+
+* Re-run the script
+* Approve the requested Microsoft Graph permissions
+
+**SharePoint connection fails**
+
+* Ensure `SP_CLIENT_ID` and `SP_CLIENT_SECRET` are set in the same PowerShell session
 
 ---
 
