@@ -246,7 +246,7 @@ Execute:
 ### Domain audit
 
 ```powershell
-./scripts/Get-EntraUsersByDomain.ps1 -Domains tangent.co -UserType Member
+./scripts/Get-EntraUsersByDomain.ps1 -Domains amansk.co -UserType Member
 ```
 
 ---
