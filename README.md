@@ -2,7 +2,7 @@
 
 PowerShell toolkit for common **Microsoft 365 / Entra ID** administrative tasks.
 
-Designed for IT admins and junior sysadmins who need a simple, guided interface for identity lifecycle and tenant housekeeping.
+Designed for IT admins/sysadmins who need a simple, guided interface for identity lifecycle and tenant housekeeping.
 
 ---
 
