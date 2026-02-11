@@ -138,4 +138,3 @@ while ($true) {
   default { Write-Host "Invalid option." -ForegroundColor Yellow }
   }
 }
-
