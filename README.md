@@ -2,7 +2,7 @@
 
 PowerShell toolkit for common **Microsoft 365 / Entra ID** administrative tasks.
 
-Designed for IT admins/sysadmins who need a simple, guided interface for identity lifecycle and tenant housekeeping.
+Designed for IT admins and junior sysadmins who need a simple, guided interface for identity lifecycle and tenant housekeeping.
 
 ---
 
@@ -27,7 +27,7 @@ Designed for IT admins/sysadmins who need a simple, guided interface for identit
 * Removes from:
 
   * Security groups
-  * M365 groups
+  * Microsoft 365 groups
   * Distribution lists
 * Removes shared mailbox permissions
 * Converts mailbox to shared
@@ -49,7 +49,7 @@ Designed for IT admins/sysadmins who need a simple, guided interface for identit
 
 ---
 
-## Prerequisites
+## Quick Start
 
 ### 1) Install PowerShell 7
 
@@ -91,7 +91,7 @@ Install-Module PnP.PowerShell -Scope CurrentUser
 
 ---
 
-### 3) Install Azure CLI (for domain audit script)
+### 3) Install Azure CLI (for domain audit)
 
 Install:
 https://learn.microsoft.com/cli/azure/install-azure-cli
@@ -102,7 +102,7 @@ Login:
 az login
 ```
 
-Guest tenant:
+If working in a guest tenant:
 
 ```bash
 az login --tenant <tenant-id>
@@ -110,46 +110,43 @@ az login --tenant <tenant-id>
 
 ---
 
-### 4) SharePoint app registration (required for cleanup script)
+### 4) Configure SharePoint app registration (required for cleanup script)
 
-The SharePoint cleanup script uses **app-only authentication**.
+Create an **App Registration** in Azure:
 
-You must create an app registration in Azure:
+1. Azure Portal → Entra ID → App registrations
+2. New registration
+3. Name: `SharePoint-Cleanup`
+4. Single tenant
+5. Create
 
-1. Go to **Azure Portal → Entra ID → App registrations**
-2. Click **New registration**
-3. Name: `SharePointCleanupApp` (or similar)
-4. Leave defaults and create
-
-After creation:
+Then:
 
 1. Go to **Certificates & secrets**
-2. Create a **new client secret**
-3. Copy the **Client ID** and **Client Secret**
+2. Create a **client secret**
+3. Copy the value
 
-Then grant SharePoint permissions:
+Grant API permissions:
 
-1. Go to **API permissions**
-2. Add permission → **SharePoint**
-3. Application permissions:
+* Microsoft Graph
+* Application permissions:
 
-   * `Sites.FullControl.All` (or minimum required)
-4. Click **Grant admin consent**
+  * `Sites.ReadWrite.All`
+
+Click **Grant admin consent**.
 
 ---
 
-## Environment Variables
+### 5) Set environment variables
 
-Set these in the same PowerShell session before running scripts.
-
-### SharePoint (required for cleanup)
+Inside PowerShell:
 
 ```powershell
 $env:SP_CLIENT_ID="xxxxx"
 $env:SP_CLIENT_SECRET="yyyyy"
 ```
 
-### Slack (optional for offboarding notifications)
+Optional (Slack offboarding notifications):
 
 ```powershell
 $env:SLACK_WEBHOOK_URL="https://hooks.slack.com/services/XXX/YYY/ZZZ"
@@ -157,7 +154,7 @@ $env:SLACK_WEBHOOK_URL="https://hooks.slack.com/services/XXX/YYY/ZZZ"
 
 ---
 
-## Quick Start
+### 6) Run the toolkit
 
 From the repo root:
 
@@ -184,7 +181,7 @@ Invoke-M365Toolkit.ps1
 scripts/
   New-M365User.ps1
   Offboard-M365User.ps1
-  SharePointCleanup.ps1
+  Cleanup-SharePoint.ps1
   Get-EntraUsersByDomain.ps1
 README.md
 ```
@@ -220,13 +217,13 @@ When prompted during `Connect-MgGraph`, approve:
 ### Onboard user (dry run)
 
 ```powershell
-./scripts/New-M365User.ps1 -WhatIf
+pwsh ./scripts/New-M365User.ps1 -WhatIf
 ```
 
 ### Offboard user
 
 ```powershell
-./scripts/Offboard-M365User.ps1 -User test@company.com -RevokeSignIn
+pwsh ./scripts/Offboard-M365User.ps1 -User test@company.com -RevokeSignIn
 ```
 
 ### SharePoint cleanup
@@ -234,19 +231,53 @@ When prompted during `Connect-MgGraph`, approve:
 Dry run:
 
 ```powershell
-./scripts/SharePointCleanup.ps1 -SiteUrl "https://tenant.sharepoint.com/sites/example"
+pwsh ./scripts/Cleanup-SharePoint.ps1 -SiteUrl "https://tenant.sharepoint.com/sites/example"
 ```
 
 Execute:
 
 ```powershell
-./scripts/SharePointCleanup.ps1 -SiteUrl "https://tenant.sharepoint.com/sites/example" -Execute
+pwsh ./scripts/Cleanup-SharePoint.ps1 -SiteUrl "https://tenant.sharepoint.com/sites/example" -Execute
 ```
 
 ### Domain audit
 
 ```powershell
-./scripts/Get-EntraUsersByDomain.ps1 -Domains amansk.co -UserType Member
+pwsh ./scripts/Get-EntraUsersByDomain.ps1 -Domains company.com -UserType Member
+```
+
+---
+
+## Troubleshooting
+
+### Graph login does not appear or scripts hang at “Connecting to Microsoft Graph”
+
+Reset the Graph session:
+
+```powershell
+Disconnect-MgGraph -ErrorAction SilentlyContinue
+```
+
+Reconnect manually:
+
+```powershell
+$tenantId = "<your-tenant-id>"
+
+Connect-MgGraph `
+  -TenantId $tenantId `
+  -Scopes @(
+    "User.ReadWrite.All",
+    "Directory.ReadWrite.All",
+    "Group.ReadWrite.All"
+  ) `
+  -ContextScope Process `
+  -NoWelcome
+```
+
+Then run the toolkit again:
+
+```powershell
+pwsh ./Invoke-M365Toolkit.ps1
 ```
 
 ---
@@ -256,4 +287,4 @@ Execute:
 * Scripts are safe by default.
 * Many actions support `-WhatIf`.
 * No secrets are stored in scripts.
-* Environment variables are session-based unless persisted.
+* Environment variables are used for sensitive values.
