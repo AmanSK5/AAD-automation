@@ -49,13 +49,13 @@ Designed for IT admins and junior sysadmins who need a simple, guided interface 
 
 ---
 
-## Quick Start
+## Prerequisites
 
 ### 1) Install PowerShell 7
 
 #### Windows
 
-Download and install:
+Install from:
 https://learn.microsoft.com/powershell/scripting/install/installing-powershell
 
 #### macOS (Homebrew)
@@ -91,7 +91,7 @@ Install-Module PnP.PowerShell -Scope CurrentUser
 
 ---
 
-### 3) Install Azure CLI (for domain audit)
+### 3) Install Azure CLI (for domain audit script)
 
 Install:
 https://learn.microsoft.com/cli/azure/install-azure-cli
@@ -110,18 +110,46 @@ az login --tenant <tenant-id>
 
 ---
 
-### 4) Set environment variables
+### 4) SharePoint app registration (required for cleanup script)
 
-Inside PowerShell:
+The SharePoint cleanup script uses **app-only authentication**.
 
-#### SharePoint app-only auth
+You must create an app registration in Azure:
+
+1. Go to **Azure Portal → Entra ID → App registrations**
+2. Click **New registration**
+3. Name: `SharePointCleanupApp` (or similar)
+4. Leave defaults and create
+
+After creation:
+
+1. Go to **Certificates & secrets**
+2. Create a **new client secret**
+3. Copy the **Client ID** and **Client Secret**
+
+Then grant SharePoint permissions:
+
+1. Go to **API permissions**
+2. Add permission → **SharePoint**
+3. Application permissions:
+
+   * `Sites.FullControl.All` (or minimum required)
+4. Click **Grant admin consent**
+
+---
+
+## Environment Variables
+
+Set these in the same PowerShell session before running scripts.
+
+### SharePoint (required for cleanup)
 
 ```powershell
 $env:SP_CLIENT_ID="xxxxx"
 $env:SP_CLIENT_SECRET="yyyyy"
 ```
 
-#### Optional: Slack offboarding notifications
+### Slack (optional for offboarding notifications)
 
 ```powershell
 $env:SLACK_WEBHOOK_URL="https://hooks.slack.com/services/XXX/YYY/ZZZ"
@@ -129,7 +157,7 @@ $env:SLACK_WEBHOOK_URL="https://hooks.slack.com/services/XXX/YYY/ZZZ"
 
 ---
 
-### 5) Run the toolkit
+## Quick Start
 
 From the repo root:
 
@@ -156,7 +184,7 @@ Invoke-M365Toolkit.ps1
 scripts/
   New-M365User.ps1
   Offboard-M365User.ps1
-  Cleanup-SharePoint.ps1
+  SharePointCleanup.ps1
   Get-EntraUsersByDomain.ps1
 README.md
 ```
@@ -206,13 +234,13 @@ When prompted during `Connect-MgGraph`, approve:
 Dry run:
 
 ```powershell
-./scripts/Cleanup-SharePoint.ps1 -SiteUrl "https://tenant.sharepoint.com/sites/example"
+./scripts/SharePointCleanup.ps1 -SiteUrl "https://tenant.sharepoint.com/sites/example"
 ```
 
 Execute:
 
 ```powershell
-./scripts/Cleanup-SharePoint.ps1 -SiteUrl "https://tenant.sharepoint.com/sites/example" -Execute
+./scripts/SharePointCleanup.ps1 -SiteUrl "https://tenant.sharepoint.com/sites/example" -Execute
 ```
 
 ### Domain audit
@@ -228,3 +256,4 @@ Execute:
 * Scripts are safe by default.
 * Many actions support `-WhatIf`.
 * No secrets are stored in scripts.
+* Environment variables are session-based unless persisted.
