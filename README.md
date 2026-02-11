@@ -2,7 +2,7 @@
 
 PowerShell toolkit for common **Microsoft 365 / Entra ID** administrative tasks.
 
-Designed for IT admins/sysadmins who need a simple, guided interface for identity lifecycle and tenant housekeeping.
+Designed for IT admins and junior sysadmins who need a simple, guided interface for identity lifecycle and tenant housekeeping.
 
 ---
 
@@ -55,7 +55,7 @@ Designed for IT admins/sysadmins who need a simple, guided interface for identit
 
 #### Windows
 
-Install from:
+Download and install:
 https://learn.microsoft.com/powershell/scripting/install/installing-powershell
 
 #### macOS (Homebrew)
@@ -110,16 +110,18 @@ az login --tenant <tenant-id>
 
 ---
 
-### 4) Set environment variables (SharePoint only)
+### 4) Set environment variables
 
 Inside PowerShell:
+
+#### SharePoint app-only auth
 
 ```powershell
 $env:SP_CLIENT_ID="xxxxx"
 $env:SP_CLIENT_SECRET="yyyyy"
 ```
 
-Optional (Slack offboarding):
+#### Optional: Slack offboarding notifications
 
 ```powershell
 $env:SLACK_WEBHOOK_URL="https://hooks.slack.com/services/XXX/YYY/ZZZ"
@@ -218,25 +220,6 @@ Execute:
 ```powershell
 ./scripts/Get-EntraUsersByDomain.ps1 -Domains tangent.co -UserType Member
 ```
-
----
-
-## Troubleshooting
-
-**Wrong tenant after `az login`**
-
-```
-az login --tenant <tenant-id>
-```
-
-**Graph permission errors**
-
-* Re-run the script
-* Approve the requested Microsoft Graph permissions
-
-**SharePoint connection fails**
-
-* Ensure `SP_CLIENT_ID` and `SP_CLIENT_SECRET` are set in the same PowerShell session
 
 ---
 
