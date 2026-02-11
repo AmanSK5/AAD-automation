@@ -1,156 +1,252 @@
-# Azure AD / Microsoft 365 User Automation
+M365 / Entra Toolkit (PowerShell)
 
-PowerShell automation for onboarding and offboarding Microsoft 365 users using Microsoft Graph and Exchange Online.
-Even with platforms like Runbooks, Puppet, or other automation tools, PowerShell remains a practical and effective option for common identity lifecycle tasks in Microsoft environments.
+PowerShell toolkit for common Microsoft 365 / Entra ID administrative tasks, including:
 
-This repository contains scripts designed for IT teams to standardise and automate user onboarding and offboarding processes.
+User onboarding
 
----
+User offboarding
 
-## Features
+SharePoint version cleanup
 
-### Onboarding (`New-M365User.ps1`)
+Domain-based user audits
 
-* Interactive or parameter-driven user creation
-* Creates Entra ID user with:
+Designed for IT admins and junior sysadmins who need a simple, guided interface for common identity lifecycle tasks.
 
-  * First name
-  * Last name
-  * Job title
-  * Domain selection
-  * Usage location
-* Generates secure temporary password
-* Assigns:
+Quick Start
 
-  * Microsoft 365 Business Premium
-  * Defender for Office 365 (Plan 2)
+Install PowerShell 7
 
-### Offboarding (`Offboard-M365User.ps1`)
+Install required modules
 
-* Disables user account
-* Optionally revokes sign-in sessions
-* Removes licenses
-* Removes group memberships
-* Cleans shared mailbox permissions
-* Converts mailbox to shared
-* Optional Slack notification
+Login to Azure
 
----
+Run the toolkit
 
-## Requirements
-
-### PowerShell modules
-
-* Microsoft.Graph
-* ExchangeOnlineManagement
-
-### Graph permissions
-
-Delegated scopes required:
-
-* `User.ReadWrite.All`
-* `Directory.ReadWrite.All`
-* `Group.ReadWrite.All`
-* `Organization.Read.All`
-
----
-
-## Setup
-
-1. Clone the repository
-2. Install required PowerShell modules:
-
-```powershell
+1) Install required modules (inside PowerShell)
 Install-Module Microsoft.Graph -Scope CurrentUser
 Install-Module ExchangeOnlineManagement -Scope CurrentUser
-```
+Install-Module PnP.PowerShell -Scope CurrentUser
+2) Login to Azure (for domain audit)
+az login
 
-3. Run the scripts from a PowerShell session.
+If working in a guest tenant:
 
----
+az login --tenant <tenant-id>
+3) Set required environment variables (SharePoint only)
+$env:SP_CLIENT_ID="xxxxx"
+$env:SP_CLIENT_SECRET="yyyyy"
+4) Run the toolkit
+pwsh ./Invoke-M365Toolkit.ps1
+Features
+1) User onboarding
 
-## Usage
+Creates a new Entra ID user with:
 
-### Interactive onboarding
+First name
 
-```powershell
-./New-M365User.ps1
-```
+Last name
 
-### Non-interactive onboarding
+Job title
 
-```powershell
-./New-M365User.ps1 `
-  -FirstName "Aman" `
-  -LastName "Karir" `
-  -Domain "amansk.co" `
-  -JobTitle "Sysadmin"
-```
+Domain selection
 
-### Dry run
+Usage location
 
-```powershell
+Secure temporary password
+
+License assignment:
+
+Microsoft 365 Business Premium
+
+Defender for Office 365 (Plan 2)
+
+2) User offboarding
+
+Performs full offboarding workflow:
+
+Disable account
+
+Revoke sign-in sessions (optional)
+
+Remove all licenses
+
+Remove from:
+
+Security groups
+
+M365 groups
+
+Distribution lists
+
+Remove shared mailbox permissions
+
+Convert mailbox to shared
+
+Optional Slack notification
+
+3) SharePoint version cleanup
+
+Reduces storage by removing old file versions.
+
+App-only authentication
+
+Dry-run by default
+
+Configurable version retention
+
+4) Domain user audit
+
+Lists users by domain with status:
+
+Member or Guest users
+
+Filters by mail or UPN domain
+
+Shows enabled/disabled state
+
+Optional “accurate” mode for real-time status
+
+Prerequisites
+PowerShell 7
+
+This toolkit requires PowerShell 7 (pwsh).
+
+Windows
+
+Install from:
+https://learn.microsoft.com/powershell/scripting/install/installing-powershell
+
+macOS (Homebrew)
+brew install --cask powershell
+
+Launch:
+
+pwsh
+Linux (Ubuntu example)
+sudo apt-get update
+sudo apt-get install -y powershell
+
+Launch:
+
+pwsh
+Required PowerShell Modules
+
+Install once inside PowerShell:
+
+Install-Module Microsoft.Graph -Scope CurrentUser
+Install-Module ExchangeOnlineManagement -Scope CurrentUser
+Install-Module PnP.PowerShell -Scope CurrentUser
+Azure CLI (required for domain audit script)
+
+Install:
+https://learn.microsoft.com/cli/azure/install-azure-cli
+
+Login:
+
+az login
+
+Guest tenant:
+
+az login --tenant <tenant-id>
+Microsoft Graph Permissions
+
+When prompted during Connect-MgGraph, approve:
+
+Onboarding
+
+User.ReadWrite.All
+
+Directory.ReadWrite.All
+
+Organization.Read.All
+
+Offboarding
+
+User.ReadWrite.All
+
+Group.ReadWrite.All
+
+Directory.ReadWrite.All
+
+Domain audit
+
+User.Read.All
+or
+
+Directory.Read.All
+
+Environment Variables
+
+Secrets are handled via environment variables instead of being stored in scripts.
+
+Set these inside the PowerShell session before running the toolkit.
+
+SharePoint cleanup (required for script 3)
+Variable	Description
+SP_CLIENT_ID	SharePoint app registration client ID
+SP_CLIENT_SECRET	SharePoint app registration client secret
+
+Set in PowerShell:
+
+$env:SP_CLIENT_ID="xxxxx"
+$env:SP_CLIENT_SECRET="yyyyy"
+Slack offboarding notifications (optional)
+Variable	Description
+SLACK_WEBHOOK_URL	Slack incoming webhook URL
+$env:SLACK_WEBHOOK_URL="https://hooks.slack.com/services/XXX/YYY/ZZZ"
+Usage
+
+Start the interactive toolkit:
+
+pwsh ./Invoke-M365Toolkit.ps1
+
+Menu:
+
+1) Onboard user
+2) Offboard user
+3) SharePoint cleanup
+4) Domain user audit
+Q) Quit
+Example Commands (Direct Script Use)
+Onboard user (dry run)
 ./New-M365User.ps1 -WhatIf
-```
+Offboard user
+./Offboard-M365User.ps1 -User test@company.com -RevokeSignIn
 
----
+With Slack:
 
-### Offboarding a user
-
-```powershell
 ./Offboard-M365User.ps1 `
-  -User amank@amansk.co `
-  -RevokeSignIn
-```
-
-With Slack notification:
-
-```powershell
-./Offboard-M365User.ps1 `
-  -User amank@amansk.co `
+  -User test@company.com `
   -RevokeSignIn `
-  -SlackWebhookUrl "https://hooks.slack.com/services/XXX/YYY/ZZZ"
-```
+  -SlackWebhookUrl $env:SLACK_WEBHOOK_URL
+SharePoint cleanup (dry run)
+./Cleanup-SharePoint.ps1 -SiteUrl "https://tenant.sharepoint.com/sites/example"
 
----
+Execute deletion:
 
-## Configuration
+./Cleanup-SharePoint.ps1 `
+  -SiteUrl "https://tenant.sharepoint.com/sites/example" `
+  -Execute
+Domain audit
+./Get-EntraUsersByDomain.ps1 -Domains tangent.co -UserType Member
 
-Example configuration structure:
+Accurate mode:
 
-```json
-{
-  "Tenant": {
-    "DefaultUsageLocation": "GB",
-    "AllowedDomains": ["amansk.co"]
-  },
-  "Licensing": {
-    "BusinessPremiumSkuPartNumber": "SPB",
-    "DefenderO365P2SkuPartNumber": "ATP_ENTERPRISE"
-  }
-}
-```
+./Get-EntraUsersByDomain.ps1 `
+  -Domains tangent.co `
+  -UserType Member `
+  -Accurate
+Repository Structure
+Invoke-M365Toolkit.ps1
+New-M365User.ps1
+Offboard-M365User.ps1
+Cleanup-SharePoint.ps1
+Get-EntraUsersByDomain.ps1
+README.md
+Notes
 
-Do not commit real configuration files or secrets to the repository.
+All scripts support -WhatIf where applicable.
 
----
+Designed to be safe by default (dry-run behaviour where possible).
 
-## Security Notes
-
-* Do not commit real configuration files, secrets, or webhook URLs.
-* Review Graph permissions before use in production.
-* The onboarding script generates a temporary password and displays it once.
-  Share it with the user via a secure channel and avoid running the script in environments where console output is logged or recorded.
-
----
-
-## Disclaimer
-
-These scripts are provided as-is.
-Always test in a non-production environment before deploying to live tenants.
-
----
-
-## License
-
-MIT License
+No secrets stored in scripts.
