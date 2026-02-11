@@ -132,7 +132,7 @@ $env:SLACK_WEBHOOK_URL="https://hooks.slack.com/services/XXX/YYY/ZZZ"
 From the repo root:
 
 ```powershell
-pwsh ./Invoke-M365Toolkit.ps1
+pwsh ./Invoke-M365ToolKit.ps1
 ```
 
 Menu:
@@ -150,8 +150,8 @@ Q) Quit
 ## Repository Structure
 
 ```
-Invoke-M365Toolkit.ps1
-scripts/
+Invoke-M365ToolKit.ps1
+Scripts/
   New-M365User.ps1
   Offboard-M365User.ps1
   Cleanup-SharePoint.ps1
