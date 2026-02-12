@@ -34,13 +34,12 @@ param(
   [string]$FirstName,
   [string]$LastName,
   [string]$Domain,
-  [string]$UpnLocalPart,        # optional override; default firstname.lastname
+  [string]$UpnLocalPart,
   [string]$JobTitle,
-  [string]$UsageLocation = "GB",# UK is GB in M365 usage location
-  [switch]$ForceChangePasswordNextSignIn = $true
+  [string]$UsageLocation = "GB",
+  [bool]$ForceChangePasswordNextSignIn = $true
 )
 
-# ----------------------------- helpers -----------------------------
 function Write-Log {
   param([string]$Message, [ValidateSet('INFO','WARN','ERROR')][string]$Level='INFO')
   $ts = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
@@ -61,17 +60,14 @@ function Normalize-LocalPart {
   param([string]$s)
   if (-not $s) { return $null }
   $s = $s.Trim().ToLower()
-  # replace spaces with dots, strip weird characters except dot and dashes
   $s = $s -replace '\s+','.'
   $s = $s -replace '[^a-z0-9\.\-]',''
-  # collapse multiple dots
   while ($s -match '\.\.') { $s = $s -replace '\.\.','.' }
   $s.Trim('.')
 }
 
 function New-RandomPassword {
   param([int]$Length = 16)
-  # Strong-ish: upper/lower/digits/special
   $upper = "ABCDEFGHJKLMNPQRSTUVWXYZ"
   $lower = "abcdefghijkmnpqrstuvwxyz"
   $digits = "23456789"
@@ -82,7 +78,6 @@ function New-RandomPassword {
   $bytes = New-Object byte[] ($Length)
   $rng.GetBytes($bytes)
 
-  # ensure at least one from each set
   $pwd = @(
     $upper[ $bytes[0] % $upper.Length ]
     $lower[ $bytes[1] % $lower.Length ]
@@ -94,7 +89,6 @@ function New-RandomPassword {
     $pwd += $all[ $bytes[$i] % $all.Length ]
   }
 
-  # shuffle
   $pwd = $pwd | Sort-Object { Get-Random }
   -join $pwd
 }
@@ -119,6 +113,7 @@ function Select-VerifiedDomain {
   for ($i=0; $i -lt $domains.Count; $i++) {
     Write-Host ("[{0}] {1}" -f $i, $domains[$i].Id)
   }
+
   $choice = Read-Host "Pick domain index"
   if ($choice -notmatch '^\d+$') { throw "Invalid selection." }
   $idx = [int]$choice
@@ -127,11 +122,8 @@ function Select-VerifiedDomain {
 }
 
 function Find-LicenseSkuIds {
-  # We try to find two SKUs in YOUR tenant by common identifiers
-  # You can tweak these strings if your tenant names differ.
   $skus = Get-MgSubscribedSku -All -ErrorAction Stop
 
-  # Candidate matches
   $bp = $skus | Where-Object {
     $_.SkuPartNumber -match 'BUSINESS_PREMIUM|SPB|O365_BUSINESS_PREMIUM|M365_BUSINESS_PREMIUM' -or
     ($_.ServicePlans | Out-String) -match 'MICROSOFTBOOKINGS'
@@ -139,10 +131,10 @@ function Find-LicenseSkuIds {
 
   $defO365P2 = $skus | Where-Object {
     $_.SkuPartNumber -match 'ATP_ENTERPRISE|DEFENDER_O365|MDO_P2|O365_ATP' -or
-    $_.SkuPartNumber -match 'THREAT_INTELLIGENCE' # fallback-ish
+    $_.SkuPartNumber -match 'THREAT_INTELLIGENCE'
   } | Select-Object -First 1
 
-  return [pscustomobject]@{
+  [pscustomobject]@{
     BusinessPremium = $bp
     DefenderO365P2  = $defO365P2
   }
@@ -152,13 +144,15 @@ function Find-LicenseSkuIds {
 Ensure-Module -Name Microsoft.Graph
 Connect-GraphIfNeeded
 
-# Prompt for missing fields
 if (-not $FirstName) { $FirstName = Read-Host "First name" }
 if (-not $LastName)  { $LastName  = Read-Host "Last name" }
 
-if (-not $Domain) {
-  $Domain = Select-VerifiedDomain
+# Job Title is mandatory: keep prompting until provided
+while ([string]::IsNullOrWhiteSpace($JobTitle)) {
+  $JobTitle = Read-Host "Job title (required)"
 }
+
+if (-not $Domain) { $Domain = Select-VerifiedDomain }
 
 if (-not $UpnLocalPart) {
   $UpnLocalPart = Normalize-LocalPart ("{0}.{1}" -f $FirstName, $LastName)
@@ -169,82 +163,129 @@ if (-not $UpnLocalPart) {
 $upn = "{0}@{1}" -f $UpnLocalPart, $Domain
 $displayName = ("{0} {1}" -f $FirstName.Trim(), $LastName.Trim()).Trim()
 $mailNick = $UpnLocalPart
-$mail = $upn
 
 Write-Host ""
 Write-Log "UPN: $upn" 'INFO'
 Write-Log "DisplayName: $displayName" 'INFO'
+Write-Log "JobTitle: $JobTitle" 'INFO'
 Write-Log "UsageLocation: $UsageLocation" 'INFO'
 
-# Check if user already exists
+# Existence check
 try {
   $existing = Get-MgUser -UserId $upn -ErrorAction Stop
-  if ($existing) {
-    throw "User already exists: $upn"
-  }
+  if ($existing) { throw "User already exists: $upn" }
 } catch {
-  # If it's "not found", we continue. If it's another error, throw.
   if ($_.Exception.Message -notmatch 'Request_ResourceNotFound|NotFound') {
-    # Some tenants return different wording; if unsure, we just log and proceed.
     Write-Log "User existence check note: $($_.Exception.Message)" 'WARN'
   }
 }
 
 $password = New-RandomPassword
+Write-Log "Generated temp password length: $($password.Length)" 'INFO'
 
-# Create user body
-$pwProfile = @{
-  password = $password
-  forceChangePasswordNextSignIn = [bool]$ForceChangePasswordNextSignIn
+# --- preflight validation ---
+if ([string]::IsNullOrWhiteSpace($displayName)) { throw "displayName is empty." }
+if ([string]::IsNullOrWhiteSpace($upn))         { throw "UPN is empty." }
+if ([string]::IsNullOrWhiteSpace($mailNick))    { throw "mailNickname is empty." }
+if ([string]::IsNullOrWhiteSpace($password))    { throw "Password generation returned empty string." }
+if ([string]::IsNullOrWhiteSpace($JobTitle))    { throw "JobTitle is required but empty." }
+
+# Build Graph payload (exact Graph schema) — JobTitle always included
+$body = [ordered]@{
+  accountEnabled    = $true
+  displayName       = $displayName
+  mailNickname      = $mailNick
+  userPrincipalName = $upn
+  givenName         = $FirstName
+  surname           = $LastName
+  jobTitle          = $JobTitle
+  usageLocation     = $UsageLocation
+  passwordProfile   = @{
+    password                      = $password
+    forceChangePasswordNextSignIn = [bool]$ForceChangePasswordNextSignIn
+  }
 }
 
+Write-Log "DEBUG: body.displayName = '$($body.displayName)' (len=$($body.displayName.Length))" 'INFO'
+Write-Log "DEBUG: body.userPrincipalName = '$($body.userPrincipalName)'" 'INFO'
+
+# Redacted payload dump (safe to leave in while debugging)
+$redacted = ($body | ConvertTo-Json -Depth 10) -replace '"password"\s*:\s*".*?"','"password": "REDACTED"'
+Write-Host "`n=== DEBUG PAYLOAD (REDACTED) ===`n$redacted`n==============================`n"
+
+# ---- CREATE USER (raw POST to Graph; bypass SDK model mapping) ----
 if ($PSCmdlet.ShouldProcess($upn, "Create Entra ID user")) {
-  $newUser = New-MgUser -AccountEnabled:$true `
-    -DisplayName $displayName `
-    -MailNickname $mailNick `
-    -UserPrincipalName $upn `
-    -GivenName $FirstName `
-    -Surname $LastName `
-    -JobTitle $JobTitle `
-    -Mail $mail `
-    -UsageLocation $UsageLocation `
-    -PasswordProfile $pwProfile `
+  $json = $body | ConvertTo-Json -Depth 10
+
+  $newUser = Invoke-MgGraphRequest -Method POST `
+    -Uri "https://graph.microsoft.com/v1.0/users" `
+    -ContentType "application/json" `
+    -Body $json `
     -ErrorAction Stop
 
-  Write-Log "Created user: $($newUser.Id)" 'INFO'
+  Write-Log "Created user: $($newUser.id)" 'INFO'
   Write-Host ""
   Write-Host "TEMP PASSWORD (copy now): $password" -ForegroundColor Yellow
   Write-Host ""
 }
 
-# Assign licenses
+# Assign licenses (raw Graph call to avoid SDK serialization issues)
 try {
   $skuPick = Find-LicenseSkuIds
 
-  $toAdd = @()
+  $addLicenses = @()
+
   if ($skuPick.BusinessPremium) {
-    $toAdd += @{ SkuId = $skuPick.BusinessPremium.SkuId }
+    $addLicenses += @{ skuId = ([string]$skuPick.BusinessPremium.SkuId) }
     Write-Log "Found Business Premium SKU: $($skuPick.BusinessPremium.SkuPartNumber)" 'INFO'
   } else {
     Write-Log "Business Premium SKU not found in tenant. (No license will be applied for it.)" 'WARN'
   }
 
   if ($skuPick.DefenderO365P2) {
-    $toAdd += @{ SkuId = $skuPick.DefenderO365P2.SkuId }
+    $addLicenses += @{ skuId = ([string]$skuPick.DefenderO365P2.SkuId) }
     Write-Log "Found Defender for O365 SKU: $($skuPick.DefenderO365P2.SkuPartNumber)" 'INFO'
   } else {
     Write-Log "Defender for Office 365 (Plan 2) SKU not found in tenant. (No license will be applied for it.)" 'WARN'
   }
 
-  if ($toAdd.Count -gt 0) {
-    if ($PSCmdlet.ShouldProcess($upn, "Assign $($toAdd.Count) license(s)")) {
-      # Need the user id for license assignment
-      $u = Get-MgUser -UserId $upn -Property "id" -ErrorAction Stop
-      Set-MgUserLicense -UserId $u.Id -AddLicenses $toAdd -RemoveLicenses @() -ErrorAction Stop
+  if ($addLicenses.Count -gt 0) {
+    if ($PSCmdlet.ShouldProcess($upn, "Assign $($addLicenses.Count) license(s)")) {
+
+      $userId = $null
+      if ($newUser -and $newUser.id) { $userId = $newUser.id }
+      if (-not $userId) {
+        $u = Get-MgUser -UserId $upn -Property "id" -ErrorAction Stop
+        $userId = $u.Id
+      }
+
+      $assignBody = @{
+        addLicenses    = $addLicenses
+        removeLicenses = @()
+      } | ConvertTo-Json -Depth 10
+
+      Write-Host "`n=== DEBUG assignLicense payload ===`n$assignBody`n===============================`n"
+
+      $null = Invoke-MgGraphRequest -Method POST `
+        -Uri "https://graph.microsoft.com/v1.0/users/$userId/assignLicense" `
+        -ContentType "application/json" `
+        -Body $assignBody `
+        -ErrorAction Stop
+
       Write-Log "Assigned licenses successfully." 'INFO'
+
+      $details = Get-MgUserLicenseDetail -UserId $userId -All -ErrorAction SilentlyContinue
+      if ($details) {
+        Write-Log ("License details now: " + (($details | Select-Object -ExpandProperty SkuPartNumber) -join ", ")) 'INFO'
+      } else {
+        Write-Log "No license details returned yet (can take a moment). Check Entra UI shortly." 'WARN'
+      }
     }
+  } else {
+    Write-Log "No licenses to add (no matching SKUs found)." 'WARN'
   }
-} catch {
+}
+catch {
   Write-Log "License assignment issue: $($_.Exception.Message)" 'ERROR'
 }
 
