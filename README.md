@@ -1,59 +1,102 @@
 # M365 / Entra Toolkit (PowerShell)
 
-PowerShell toolkit for common **Microsoft 365 / Entra ID** administrative tasks.
+PowerShell toolkit for automating common **Microsoft 365 / Entra ID** identity lifecycle and tenant administration tasks.
 
-Designed for IT admins/sysadmins who need a simple, guided interface for identity lifecycle and tenant housekeeping.
+Designed for IT admins and sysadmins who need a simple, guided interface for:
+
+- User onboarding with secure temp passwords and licensing
+- Automated offboarding and session revocation
+- SharePoint version cleanup
+- Domain-based user audits
+
+Built around **Microsoft Graph** with safe defaults and `-WhatIf` support.
 
 ---
-## Changelog
 
-### v1.2
-- Refactored New-M365User.ps1 to use raw Microsoft Graph API calls
-- Fixed password profile serialization issues
-- Fixed license assignment errors
-- Enforced mandatory Job Title input
-- Improved validation and debug logging
+## What this demonstrates
+
+- Microsoft Graph automation with PowerShell
+- Identity lifecycle automation (onboarding/offboarding)
+- Secure handling of credentials and environment variables
+- Real administrative workflows
+
+---
+
+## Architecture overview
+
+```text
+                +-----------------------------+
+                |  Invoke-M365Toolkit.ps1    |
+                |  (Menu-driven wrapper)     |
+                +-------------+--------------+
+                              |
+    --------------------------------------------------------
+    |                |                  |                  |
+    v                v                  v                  v
++----------------+  +----------------+  +----------------+  +-------------------------+
+| New-M365User   |  | Offboard-M365  |  | Cleanup-       |  | Get-EntraUsersByDomain  |
+| (Onboarding)   |  | (Offboarding)  |  | SharePoint     |  | (Domain audit)          |
++----------------+  +----------------+  | (Version clean)|  +-------------------------+
+                                        +----------------+
+                                                |
+                                                v
+                                   +---------------------------+
+                                   | Microsoft Graph API       |
+                                   | - User creation           |
+                                   | - License assignment      |
+                                   | - Session revocation      |
+                                   | - Group/mailbox updates   |
+                                   | - User and domain queries |
+                                   +---------------------------+
+```
+
+---
 
 ## Features
 
 ### User onboarding
 
-* Creates a new Entra ID user
-* Generates a secure temporary password
-* Assigns:
+- Creates a new Entra ID user
+- Mandatory job title
+- Generates a secure temporary password
+- Automatically assigns:
+  - Microsoft 365 Business Premium
+  - Defender for Office 365 (Plan 2)
+- Supports interactive and parameter-driven modes
+- Supports `-WhatIf` dry runs
 
-  * Microsoft 365 Business Premium
-  * Defender for Office 365 (Plan 2)
-* Supports interactive and parameter-driven modes
-* Supports `-WhatIf` dry runs
+---
 
 ### User offboarding
 
-* Disables account
-* Revokes sign-in sessions (optional)
-* Removes all licenses
-* Removes from:
+- Disables account
+- Revokes sign-in sessions (optional)
+- Removes all licenses
+- Removes from:
+  - Security groups
+  - Microsoft 365 groups
+  - Distribution lists
+- Removes shared mailbox permissions
+- Converts mailbox to shared
+- Optional Slack notification
 
-  * Security groups
-  * Microsoft 365 groups
-  * Distribution lists
-* Removes shared mailbox permissions
-* Converts mailbox to shared
-* Optional Slack notification
+---
 
 ### SharePoint version cleanup
 
-* App-only authentication
-* Dry run by default
-* Removes old file versions
-* Configurable version retention
+- App-only authentication
+- Dry run by default
+- Removes old file versions
+- Configurable version retention
+
+---
 
 ### Domain user audit
 
-* Lists users by domain
-* Member or Guest filtering
-* Shows enabled/disabled status
-* Optional accurate mode
+- Lists users by domain
+- Member or Guest filtering
+- Shows enabled/disabled status
+- Optional accurate mode
 
 ---
 
@@ -62,18 +105,15 @@ Designed for IT admins/sysadmins who need a simple, guided interface for identit
 ### 1) Install PowerShell 7
 
 #### Windows
-
-Install from:
+Install from:  
 https://learn.microsoft.com/powershell/scripting/install/installing-powershell
 
 #### macOS (Homebrew)
-
 ```bash
 brew install --cask powershell
 ```
 
 #### Linux (Ubuntu example)
-
 ```bash
 sudo apt-get update
 sudo apt-get install -y powershell
@@ -101,7 +141,7 @@ Install-Module PnP.PowerShell -Scope CurrentUser
 
 ### 3) Install Azure CLI (for domain audit)
 
-Install:
+Install:  
 https://learn.microsoft.com/cli/azure/install-azure-cli
 
 Login:
@@ -118,7 +158,7 @@ az login --tenant <tenant-id>
 
 ---
 
-### 4) Configure SharePoint app registration (required for cleanup script)
+### 4) Configure SharePoint app registration (cleanup script)
 
 Create an **App Registration** in Azure:
 
@@ -136,10 +176,9 @@ Then:
 
 Grant API permissions:
 
-* Microsoft Graph
-* Application permissions:
-
-  * `Sites.ReadWrite.All`
+- Microsoft Graph
+- Application permissions:
+  - `Sites.ReadWrite.All`
 
 Click **Grant admin consent**.
 
@@ -192,6 +231,7 @@ scripts/
   Cleanup-SharePoint.ps1
   Get-EntraUsersByDomain.ps1
 README.md
+CHANGELOG.md
 ```
 
 ---
@@ -201,22 +241,19 @@ README.md
 When prompted during `Connect-MgGraph`, approve:
 
 ### Onboarding
-
-* User.ReadWrite.All
-* Directory.ReadWrite.All
-* Organization.Read.All
+- User.ReadWrite.All
+- Directory.ReadWrite.All
+- Organization.Read.All
 
 ### Offboarding
-
-* User.ReadWrite.All
-* Group.ReadWrite.All
-* Directory.ReadWrite.All
+- User.ReadWrite.All
+- Group.ReadWrite.All
+- Directory.ReadWrite.All
 
 ### Domain audit
-
-* User.Read.All
-  or
-* Directory.Read.All
+- User.Read.All  
+or  
+- Directory.Read.All
 
 ---
 
@@ -228,11 +265,15 @@ When prompted during `Connect-MgGraph`, approve:
 pwsh ./scripts/New-M365User.ps1 -WhatIf
 ```
 
+---
+
 ### Offboard user
 
 ```powershell
-pwsh ./scripts/Offboard-M365User.ps1 -User test@company.com -RevokeSignIn
+pwsh ./scripts/Offboard-M365User.ps1 -User admin@amansk.co -RevokeSignIn
 ```
+
+---
 
 ### SharePoint cleanup
 
@@ -248,10 +289,12 @@ Execute:
 pwsh ./scripts/Cleanup-SharePoint.ps1 -SiteUrl "https://tenant.sharepoint.com/sites/example" -Execute
 ```
 
+---
+
 ### Domain audit
 
 ```powershell
-pwsh ./scripts/Get-EntraUsersByDomain.ps1 -Domains company.com -UserType Member
+pwsh ./scripts/Get-EntraUsersByDomain.ps1 -Domains amansk.co -UserType Member
 ```
 
 ---
@@ -292,7 +335,18 @@ pwsh ./Invoke-M365Toolkit.ps1
 
 ## Notes
 
-* Scripts are safe by default.
-* Many actions support `-WhatIf`.
-* No secrets are stored in scripts.
-* Environment variables are used for sensitive values.
+- Scripts are safe by default and support dry-run modes.
+- Many actions support `-WhatIf`.
+- No secrets are stored in scripts.
+- Environment variables are used for sensitive values.
+
+---
+
+## Changelog
+
+### v1.2
+- Refactored New-M365User.ps1 to use raw Microsoft Graph API calls
+- Fixed password profile serialization issues
+- Fixed license assignment errors
+- Enforced mandatory Job Title input
+- Improved validation and debug logging
