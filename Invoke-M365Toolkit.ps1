@@ -58,6 +58,28 @@ function RunScript {
   & $path @invokeParams
 }
 
+function RunPython {
+  param(
+    [Parameter(Mandatory)][string]$ScriptName,
+    [Parameter()][string[]]$Arguments = @()
+  )
+
+  $path = Join-Path $ScriptsRoot $ScriptName
+  if (-not (Test-Path $path)) { throw "Script not found: $path" }
+
+  # Find python — try python3 first, fall back to python
+  $python = Get-Command python3 -ErrorAction SilentlyContinue
+  if (-not $python) { $python = Get-Command python -ErrorAction SilentlyContinue }
+  if (-not $python) { throw "Python not found. Install Python 3 and ensure it is on PATH." }
+
+  Write-Host ""
+  Write-Host "Running:" -ForegroundColor Cyan
+  Write-Host "$($python.Source) `"$path`" $($Arguments -join ' ')" -ForegroundColor Cyan
+  Write-Host ""
+
+  & $python.Source $path @Arguments
+}
+
 while ($true) {
   Write-Host ""
   Write-Host "=== M365 / Entra Toolkit (Desktop/Scripts) ===" -ForegroundColor Green
@@ -65,6 +87,7 @@ while ($true) {
   Write-Host "2) Offboard user (Offboard-M365User.ps1)"
   Write-Host "3) SharePoint cleanup (Cleanup-SharePoint.ps1)"
   Write-Host "4) Domain user audit (Get-EntraUsersByDomain.ps1)"
+  Write-Host "5) Azure idle resource report (azure_idle_report.py)"
   Write-Host "Q) Quit"
   $choice = (Read-Host "Select").Trim()
 
@@ -133,6 +156,33 @@ while ($true) {
   }
 
   RunScript -ScriptName "Get-EntraUsersByDomain.ps1" -ScriptParams $params
+    }
+    "5" {
+      $tenant = Ask "Azure Tenant ID (or leave blank to be prompted by script)" ""
+      $deviceCode = AskYesNo "Use device code auth?" $false
+      $includeSnapshots = AskYesNo "Include old snapshots?" $false
+      $noCost = AskYesNo "Skip cost lookups (faster, no cost figures)?" $false
+      $format = Ask "Output format (text/json/csv)" "text"
+
+      $pyArgs = @()
+
+      if ($tenant) { $pyArgs += "--tenant", $tenant }
+      if ($deviceCode) { $pyArgs += "--device-code" }
+      if ($includeSnapshots) {
+        $pyArgs += "--include-snapshots"
+        $snapDays = Ask "Snapshot age threshold (days)" "180"
+        $pyArgs += "--snapshot-days", $snapDays
+      }
+      if ($noCost) { $pyArgs += "--no-cost" }
+      if ($format -and $format -ne "text") { $pyArgs += "--output-format", $format }
+
+      $skipSubs = Ask "Subscription names/IDs to skip (comma separated, or blank)" ""
+      if ($skipSubs) { $pyArgs += "--skip-subs", $skipSubs }
+
+      $onlySubs = Ask "Only scan these subscriptions (comma separated, or blank)" ""
+      if ($onlySubs) { $pyArgs += "--only-subs", $onlySubs }
+
+      RunPython -ScriptName "azure_idle_report.py" -Arguments $pyArgs
     }
     "q" { return }
   default { Write-Host "Invalid option." -ForegroundColor Yellow }
