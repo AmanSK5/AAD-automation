@@ -8,6 +8,7 @@ Designed for IT admins and sysadmins who need a simple, guided interface for:
 - Automated offboarding and session revocation
 - SharePoint version cleanup
 - Domain-based user audits
+- Azure idle resource reporting with cost attribution
 
 Built around **Microsoft Graph** with safe defaults and `-WhatIf` support.
 
@@ -17,6 +18,7 @@ Built around **Microsoft Graph** with safe defaults and `-WhatIf` support.
 
 - Microsoft Graph automation with PowerShell
 - Identity lifecycle automation (onboarding/offboarding)
+- Azure resource waste detection and cost analysis
 - Secure handling of credentials and environment variables
 - Real administrative workflows
 
@@ -25,29 +27,29 @@ Built around **Microsoft Graph** with safe defaults and `-WhatIf` support.
 ## Architecture overview
 
 ```text
-                +-----------------------------+
-                |  Invoke-M365Toolkit.ps1    |
-                |  (Menu-driven wrapper)     |
-                +-------------+--------------+
-                              |
-    --------------------------------------------------------
-    |                |                  |                  |
-    v                v                  v                  v
-+----------------+  +----------------+  +----------------+  +-------------------------+
-| New-M365User   |  | Offboard-M365  |  | Cleanup-       |  | Get-EntraUsersByDomain  |
-| (Onboarding)   |  | (Offboarding)  |  | SharePoint     |  | (Domain audit)          |
-+----------------+  +----------------+  | (Version clean)|  +-------------------------+
-                                        +----------------+
-                                                |
-                                                v
-                                   +---------------------------+
-                                   | Microsoft Graph API       |
-                                   | - User creation           |
-                                   | - License assignment      |
-                                   | - Session revocation      |
-                                   | - Group/mailbox updates   |
-                                   | - User and domain queries |
-                                   +---------------------------+
+                  +-----------------------------+
+                  |  Invoke-M365Toolkit.ps1     |
+                  |  (Menu-driven wrapper)      |
+                  +-------------+---------------+
+                                |
+    ---------------------------------------------------------------------
+    |                |                  |                |              |
+    v                v                  v                v              v
++----------------+  +----------------+  +-------------+  +-----------+  +-------------------+
+| New-M365User   |  | Offboard-M365  |  | Cleanup-    |  | Get-Entra |  | azure_idle_report |
+| (Onboarding)   |  | (Offboarding)  |  | SharePoint  |  | UsersByDo |  | (Azure waste      |
+|                |  |                |  | (Versions)  |  | main      |  |  report, Python)  |
++-------+--------+  +-------+--------+  +------+------+  +-----+-----+  +--------+----------+
+        |                    |                  |               |                  |
+        v                    v                  v               v                  v
++-----------------------------+     +-----------+---+   +------+---------+  +------+----------+
+| Microsoft Graph API         |     | SharePoint    |   | Azure CLI      |  | Azure CLI       |
+| - User creation             |     | PnP API       |   | - az login     |  | - az rest       |
+| - License assignment        |     | - File version|   | - Entra user   |  | - Cost Mgmt     |
+| - Session revocation        |     |   cleanup     |   |   queries      |  | - Resource list |
+| - Group/mailbox updates     |     +---------------+   +----------------+  | - Disk/NIC/IP   | 
+| - User and domain queries   |                                             |   inventory     |
++-----------------------------+                                             +-----------------+
 ```
 
 ---
@@ -100,6 +102,19 @@ Built around **Microsoft Graph** with safe defaults and `-WhatIf` support.
 
 ---
 
+### Azure idle resource report
+
+- Scans all subscriptions in a tenant for idle/wasted resources
+- Detects orphaned managed disks, unattached public IPs, unattached NICs, stopped (not deallocated) VMs
+- Separates AKS-linked resources into a review bucket (cluster storage/network that may still be needed)
+- Optional old snapshot detection with configurable age threshold
+- Cost attribution via Azure Cost Management API (last 30 days)
+- Includes remediation hints (az CLI commands) for each finding
+- Supports text, JSON, and CSV output formats
+- Subscription filtering by name or ID
+
+---
+
 ## Quick Start
 
 ### 1) Install PowerShell 7
@@ -139,7 +154,9 @@ Install-Module PnP.PowerShell -Scope CurrentUser
 
 ---
 
-### 3) Install Azure CLI (for domain audit)
+### 3) Install Azure CLI
+
+Required for the domain audit and the Azure idle resource report.
 
 Install:  
 https://learn.microsoft.com/cli/azure/install-azure-cli
@@ -158,7 +175,24 @@ az login --tenant <tenant-id>
 
 ---
 
-### 4) Configure SharePoint app registration (cleanup script)
+### 4) Install Python 3 (for Azure idle resource report)
+
+The idle resource report is a Python script. It requires Python 3 and the Azure CLI.
+
+#### macOS (Homebrew)
+```bash
+brew install python
+```
+
+#### Windows
+Install from:  
+https://www.python.org/downloads/
+
+No additional pip packages are required — the script uses only the standard library and shells out to `az`.
+
+---
+
+### 5) Configure SharePoint app registration (cleanup script)
 
 Create an **App Registration** in Azure:
 
@@ -184,7 +218,7 @@ Click **Grant admin consent**.
 
 ---
 
-### 5) Set environment variables
+### 6) Set environment variables
 
 Inside PowerShell:
 
@@ -201,7 +235,7 @@ $env:SLACK_WEBHOOK_URL="https://hooks.slack.com/services/XXX/YYY/ZZZ"
 
 ---
 
-### 6) Run the toolkit
+### 7) Run the toolkit
 
 From the repo root:
 
@@ -216,6 +250,7 @@ Menu:
 2) Offboard user
 3) SharePoint cleanup
 4) Domain user audit
+5) Azure idle resource report
 Q) Quit
 ```
 
@@ -230,6 +265,7 @@ scripts/
   Offboard-M365User.ps1
   Cleanup-SharePoint.ps1
   Get-EntraUsersByDomain.ps1
+  azure_idle_report.py
 README.md
 CHANGELOG.md
 ```
@@ -254,6 +290,15 @@ When prompted during `Connect-MgGraph`, approve:
 - User.Read.All  
 or  
 - Directory.Read.All
+
+---
+
+## Azure Permissions (idle resource report)
+
+The logged-in Azure CLI identity needs:
+
+- **Reader** on each subscription (for resource inventory)
+- **Cost Management Reader** on each subscription (for cost data — optional, the report works without it)
 
 ---
 
@@ -299,9 +344,37 @@ pwsh ./scripts/Get-EntraUsersByDomain.ps1 -Domains amansk.co -UserType Member
 
 ---
 
+### Azure idle resource report
+
+Text output (default):
+
+```bash
+python3 ./scripts/azure_idle_report.py --tenant <tenant-id>
+```
+
+With snapshots and JSON output:
+
+```bash
+python3 ./scripts/azure_idle_report.py --tenant <tenant-id> --include-snapshots --output-format json
+```
+
+Skip cost lookups (faster):
+
+```bash
+python3 ./scripts/azure_idle_report.py --tenant <tenant-id> --no-cost
+```
+
+Scan specific subscriptions only:
+
+```bash
+python3 ./scripts/azure_idle_report.py --tenant <tenant-id> --only-subs "Prod,Staging"
+```
+
+---
+
 ## Troubleshooting
 
-### Graph login does not appear or scripts hang at “Connecting to Microsoft Graph”
+### Graph login does not appear or scripts hang at "Connecting to Microsoft Graph"
 
 Reset the Graph session:
 
@@ -331,6 +404,18 @@ Then run the toolkit again:
 pwsh ./Invoke-M365Toolkit.ps1
 ```
 
+### Azure idle report: "Cost data unavailable"
+
+The logged-in identity needs **Cost Management Reader** on the subscription. This is optional — the report still runs and shows all resources, just without cost figures.
+
+### Azure idle report: "az not found"
+
+Ensure Azure CLI is installed and on your PATH. On macOS with Homebrew:
+
+```bash
+brew install azure-cli
+```
+
 ---
 
 ## Notes
@@ -339,14 +424,13 @@ pwsh ./Invoke-M365Toolkit.ps1
 - Many actions support `-WhatIf`.
 - No secrets are stored in scripts.
 - Environment variables are used for sensitive values.
+- The Azure idle report is read-only and never deletes or modifies resources.
 
 ---
 
 ## Changelog
 
-### v1.2
-- Refactored New-M365User.ps1 to use raw Microsoft Graph API calls
-- Fixed password profile serialization issues
-- Fixed license assignment errors
-- Enforced mandatory Job Title input
-- Improved validation and debug logging
+### v1.3
+- Added Azure idle resource report (Python) to the toolkit
+- Updated Invoke-M365Toolkit.ps1 with menu option 5 and RunPython helper
+- Idle report includes cost attribution, AKS review bucket, remediation hints, and JSON/CSV output
