@@ -1,9 +1,10 @@
 # Changelog
 
-### v1.3
+## v1.3
 - Added Azure idle resource report (Python) to the toolkit
 - Updated Invoke-M365Toolkit.ps1 with menu option 5 and RunPython helper
 - Idle report includes cost attribution, AKS review bucket, remediation hints, and JSON/CSV output
+
 
 ## v1.2 – Onboarding refactor
 - Switched to direct Microsoft Graph API calls for user creation
