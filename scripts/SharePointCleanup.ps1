@@ -31,15 +31,23 @@
 .PARAMETER LogPath
     Directory for the CSV audit log. Defaults to ./logs
 
-.EXAMPLE
-    ./Invoke-SPOVersionCleanup.ps1 -SiteUrl https://aman.sharepoint.com/sites/github
+.PARAMETER ClientId
+    Entra app registration (client) ID used for interactive sign-in. Set the
+    default below, or export SPO_CLEANUP_CLIENT_ID to override it. A client ID
+    is not a secret and is safe to commit.
 
 .EXAMPLE
-    ./Invoke-SPOVersionCleanup.ps1 -SiteUrl https://aman.sharepoint.com/sites/github -LibraryName "Shared Documents" -VersionsToKeep 5 -Execute
+    ./sharepointcleanup.ps1 -SiteUrl https://aman.sharepoint.com/sites/github
+
+.EXAMPLE
+    ./sharepointcleanup.ps1 -SiteUrl https://aman.sharepoint.com/sites/github -LibraryName "Shared Documents" -VersionsToKeep 5 -Execute
 
 .NOTES
     Requires PnP.PowerShell. Install with:
         Install-Module PnP.PowerShell -Scope CurrentUser
+
+    Requires an Entra app registration configured as a public client with the
+    delegated SharePoint permission AllSites.Manage. See README for setup.
 #>
 
 [CmdletBinding()]
@@ -58,9 +66,9 @@ param (
 
     [string]$LogPath = (Join-Path $PSScriptRoot "logs"),
 
-    # Entra app registration used for interactive sign-in. Override with the
-    # SP_CLIENT_ID environment variable if you need to point at a different app.
-    [string]$ClientId = $(if ($env:SP_CLIENT_ID) { $env:SP_CLIENT_ID } else { "REPLACE-WITH-YOUR-APP-ID" })
+    # Entra app registration used for interactive sign-in. Replace the GUID below
+    # with your own app ID, or export SPO_CLEANUP_CLIENT_ID to override it.
+    [string]$ClientId = $(if ($env:SPO_CLEANUP_CLIENT_ID) { $env:SPO_CLEANUP_CLIENT_ID } else { "00000000-0000-0000-0000-000000000000" })
 )
 
 $ErrorActionPreference = 'Stop'
@@ -73,8 +81,15 @@ $MaxRetries = 5
 # PRE-FLIGHT
 # ==============================
 
-if ($ClientId -eq "REPLACE-WITH-YOUR-APP-ID") {
-    throw "No ClientId configured. Set the default in this script or export SP_CLIENT_ID."
+# Format check rather than a placeholder comparison. A sentinel string that also
+# appears as the default is fragile: a find-and-replace to configure the script
+# changes both copies, the comparison still matches, and it throws regardless.
+if ($ClientId -notmatch '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$') {
+    throw "ClientId '$ClientId' is not a valid GUID. Set the default in this script or export SPO_CLEANUP_CLIENT_ID."
+}
+
+if ($ClientId -eq "00000000-0000-0000-0000-000000000000") {
+    throw "ClientId is still the placeholder GUID. Set the default in this script or export SPO_CLEANUP_CLIENT_ID."
 }
 
 if (-not (Get-Module -ListAvailable -Name PnP.PowerShell)) {
@@ -121,14 +136,14 @@ $stamp      = Get-Date -Format 'yyyyMMdd-HHmmss'
 $mode       = if ($Execute) { 'execute' } else { 'dryrun' }
 $logFile    = Join-Path $LogPath "versioncleanup-$siteSlug-$mode-$stamp.csv"
 
-# Buffer rows and flush per file so a crash still leaves a usable log.
+# Written row by row rather than buffered, so a crash still leaves a usable log.
 "Timestamp,FileUrl,VersionId,VersionLabel,VersionCreated,VersionSizeBytes,Action,Result,Detail" |
     Out-File -FilePath $logFile -Encoding utf8
 
 function Write-AuditRow {
     param($FileUrl, $VersionId, $VersionLabel, $VersionCreated, $VersionSize, $Action, $Result, $Detail)
 
-    $escape = { param($v) '"' + ($v -replace '"', '""') + '"' }
+    $escape = { param($v) '"' + ("$v" -replace '"', '""') + '"' }
 
     $row = @(
         (& $escape (Get-Date -Format 'o'))
@@ -162,11 +177,17 @@ function Invoke-WithRetry {
         catch {
             $msg = $_.Exception.Message
 
-            # Honour Retry-After if SharePoint gave us one, else exponential backoff.
+            # Honour Retry-After if SharePoint gave us one, else exponential
+            # backoff. Guarded because most PnP exceptions are not WebException,
+            # so InnerException and Response are frequently absent. Under
+            # StrictMode an unguarded property access here would throw and mask
+            # the original error.
             $retryAfter = $null
-            $response = $_.Exception.InnerException.Response
-            if ($null -ne $response -and $null -ne $response.Headers) {
-                $retryAfter = $response.Headers['Retry-After']
+            $inner = $_.Exception.InnerException
+            if ($inner -and
+                ($inner.PSObject.Properties.Name -contains 'Response') -and
+                $inner.Response) {
+                try { $retryAfter = $inner.Response.Headers['Retry-After'] } catch { $retryAfter = $null }
             }
 
             $isThrottle = $msg -match '429|throttl|503|too many requests'
@@ -175,7 +196,7 @@ function Invoke-WithRetry {
                 throw
             }
 
-            $wait = if ($retryAfter) { [int]$retryAfter } else { [math]::Pow(2, $attempt) }
+            $wait = if ($retryAfter) { [int]$retryAfter } else { [int][math]::Pow(2, $attempt) }
             Write-Host "  Throttled$(if($Context){" on $Context"}). Waiting ${wait}s (attempt $attempt/$MaxRetries)..." -ForegroundColor DarkYellow
             Start-Sleep -Seconds $wait
         }
@@ -222,6 +243,12 @@ function Invoke-FileCleanup {
     $fileUrl = $Item.FieldValues.FileRef
     $script:totalFiles++
 
+    # Periodic progress. The page-level callback only fires once per 500 items,
+    # which on a large library can be ten minutes of apparent silence.
+    if ($script:totalFiles % 50 -eq 0) {
+        Write-Host "  ...$($script:totalFiles) files scanned" -ForegroundColor DarkGray
+    }
+
     try {
         $versions = @(Invoke-WithRetry -Context $fileUrl -Action {
             Get-PnPFileVersion -Url $fileUrl -Connection $conn
@@ -237,9 +264,9 @@ function Invoke-FileCleanup {
 
     if ($versions.Count -le $VersionsToKeep) { return }
 
-    $oldVersions = $versions |
+    $oldVersions = @($versions |
         Sort-Object Created -Descending |
-        Select-Object -Skip $VersionsToKeep
+        Select-Object -Skip $VersionsToKeep)
 
     $script:filesTouched++
     Write-Host ""
@@ -251,7 +278,7 @@ function Invoke-FileCleanup {
         # Version size is per-version, NOT the current file size. Fall back to 0
         # rather than guessing if the property was not populated.
         $vSize = 0
-        if ($v.PSObject.Properties.Name -contains 'Size' -and $null -ne $v.Size) {
+        if (($v.PSObject.Properties.Name -contains 'Size') -and $null -ne $v.Size) {
             $vSize = [int64]$v.Size
         }
 
@@ -310,8 +337,6 @@ try {
                 }
                 Invoke-FileCleanup -Item $item
             }
-
-            Write-Host "  ...$($script:totalFiles) files scanned" -ForegroundColor DarkGray
         } | Out-Null
 }
 finally {
