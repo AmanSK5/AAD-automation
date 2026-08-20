@@ -7,8 +7,18 @@ Desktop.ini
 
 # PowerShell
 *.log
-*.psd1
-*.psm1
+
+# Script output
+logs/
+*.csv
+
+# Local config / secrets
+*.env
+.env
+local.settings.json
+*.pfx
+*.cer
+*.pem
 
 # VS Code
 .vscode/

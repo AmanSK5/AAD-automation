@@ -46,8 +46,23 @@ function RunScript {
     }
   }
 
-  # Pass -WhatIf through to the called script (if it supports it)
-  if ($WhatIf) { $invokeParams["WhatIf"] = $true }
+  # CHANGED: only pass -WhatIf if the target script actually declares it.
+  # Splatting -WhatIf into a script without SupportsShouldProcess is a
+  # parameter binding error, not a no-op.
+  if ($WhatIf) {
+    try {
+      $cmd = Get-Command $path -ErrorAction Stop
+      if ($cmd.Parameters.ContainsKey('WhatIf')) {
+        $invokeParams["WhatIf"] = $true
+      }
+      else {
+        Write-Host "Note: $ScriptName does not support -WhatIf; not passing it." -ForegroundColor DarkYellow
+      }
+    }
+    catch {
+      Write-Host "Could not inspect $ScriptName parameters: $($_.Exception.Message)" -ForegroundColor DarkYellow
+    }
+  }
 
   Write-Host ""
   Write-Host "Running:" -ForegroundColor Cyan
@@ -55,7 +70,16 @@ function RunScript {
   Write-Host "pwsh `"$path`" $paramString" -ForegroundColor Cyan
   Write-Host ""
 
-  & $path @invokeParams
+  # CHANGED: trap terminating errors so one failed script returns to the
+  # menu instead of exiting the whole toolkit.
+  try {
+    & $path @invokeParams
+  }
+  catch {
+    Write-Host ""
+    Write-Host "Script failed: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host ""
+  }
 }
 
 function RunPython {
@@ -77,7 +101,14 @@ function RunPython {
   Write-Host "$($python.Source) `"$path`" $($Arguments -join ' ')" -ForegroundColor Cyan
   Write-Host ""
 
-  & $python.Source $path @Arguments
+  try {
+    & $python.Source $path @Arguments
+  }
+  catch {
+    Write-Host ""
+    Write-Host "Script failed: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host ""
+  }
 }
 
 while ($true) {
@@ -85,7 +116,7 @@ while ($true) {
   Write-Host "=== M365 / Entra Toolkit (Desktop/Scripts) ===" -ForegroundColor Green
   Write-Host "1) Onboard user (New-M365User.ps1)"
   Write-Host "2) Offboard user (Offboard-M365User.ps1)"
-  Write-Host "3) SharePoint cleanup (Cleanup-SharePoint.ps1)"
+  Write-Host "3) SharePoint version cleanup (sharepointcleanup.ps1)"
   Write-Host "4) Domain user audit (Get-EntraUsersByDomain.ps1)"
   Write-Host "5) Azure idle resource report (azure_idle_report.py)"
   Write-Host "Q) Quit"
@@ -132,11 +163,42 @@ while ($true) {
   RunScript -ScriptName "Offboard-M365User.ps1" -ScriptParams $params
     }
     "3" {
-      # Adjust these prompts/params to whatever your SP script actually takes
+      # CHANGED: prompt for library and retention, and allow -Execute.
+      # Previously this only ever passed SiteUrl, so it could never do
+      # anything but a dry run against the Documents library.
       $site = Ask "SharePoint Site URL"
-      RunScript "Sharepointcleanup.ps1" @{
-        SiteUrl = $site
+      if ([string]::IsNullOrWhiteSpace($site)) {
+        Write-Host "No site provided." -ForegroundColor Yellow
+        break
       }
+
+      $library = Ask "Library name" "Documents"
+      $keep    = Ask "Historical versions to keep" "10"
+
+      $keepInt = 0
+      if (-not [int]::TryParse($keep, [ref]$keepInt)) {
+        Write-Host "Versions to keep must be a number." -ForegroundColor Yellow
+        break
+      }
+
+      $params = @{
+        SiteUrl        = $site
+        LibraryName    = $library
+        VersionsToKeep = $keepInt
+      }
+
+      if ($WhatIf) {
+        Write-Host "Toolkit running in -WhatIf mode: forcing dry run." -ForegroundColor Cyan
+      }
+      else {
+        Write-Host ""
+        Write-Host "Dry run reports what would be deleted. Execute mode deletes" -ForegroundColor DarkGray
+        Write-Host "versions PERMANENTLY - they do not go to the recycle bin." -ForegroundColor DarkGray
+        $execute = AskYesNo "Run in EXECUTE mode?" $false
+        if ($execute) { $params["Execute"] = $true }
+      }
+
+      RunScript -ScriptName "sharepointcleanup.ps1" -ScriptParams $params
     }
     "4" {
   $domainsRaw = Ask "Domains (comma separated, leave blank to be prompted)" ""
